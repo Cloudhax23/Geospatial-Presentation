@@ -1,8 +1,9 @@
 ---
-title: "Chapter 17"
+title: "Chapter 17: Working with Geospatial Data"
 author: "Qadeem Qureshi"
 output: pdf_document
-date: '2022-04-09'
+date: '2022-04-19'
+urlcolor: blue
 ---
 
 ```{r setup, include=FALSE}
