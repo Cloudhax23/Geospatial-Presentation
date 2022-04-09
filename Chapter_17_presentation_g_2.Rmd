@@ -1,0 +1,155 @@
+---
+title: "Chapter 17"
+author: "Qadeem Qureshi"
+output: pdf_document
+date: '2022-04-09'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Geospatial data is a collection of points, most commonly geographic coordinates, that can provide context to complex relationships. These relationships often provide us with the ability to understand how variables can relate to geographic location. The difference between geospatial data and a vector of numbers is the meaning associated with locations and their relation to some other variables. As it is, a collection of coordinates in some larger database provides little to no meaning and can be misrepresented in regression-based analysis. On the other hand, shapefiles in R and other applications provide a rich and meaningful way to determine geospatial relationships between location and other variables. Visualizations of shapefiles require knowledge of projection - the idea of transforming three-dimensional coordinate systems into corresponding two-dimensional systems while minimizing loss of positioning. 
+
+## Motivation
+
+Baumer begins by detailing the idea of cholera, its spreadability, and its relation to water pumps in nearby vicinities. This was originally done by physician John Snow who determined cholera and its spreadability through water and not air. The way through which this was determined was by mapping an area in London and then also projecting on it the deaths and locations of water pumps. Interestingly, people nearest to water pumps had the highest rate of death. Similarly, Baumer explores the relationship between voting Republican or Democrat in North Carolina and how it showcases the effect of gerrymandering. Geospatial data can be used to analyze trends, as well as relationships between location and other variables that are otherwise unrelated. 
+
+## Structure of Spatial Data
+
+Spatial data is most commonly presented in the shapefile format or the KML format. These files are composed of shapes such as points, lines, and polygons. Unlike data frames, they are rich in data and allow for drawing boundary objects as well as providing a schema as to how to draw them. 
+
+Shapefiles are not a single container of data. Instead, they can include files with extensions `.shp`, `.shx`, and `.dbf`, commonly stored in the same directory. While there is a multitude of R packages that can make use of shapefiles, for this purpose we use a tidyverse-friendly `sf` package. 
+
+## SF Package Overview
+
+Begin by including the package into your R editor. This can be done by the following:
+
+```{r package, results = FALSE}
+library(sf)
+```
+
+Next, download the [SnowGIS shapefiles](http://rtwilson.com/downloads/SnowGIS_SHP.zip). You can unzip this directory and notice that there are several files associated with the Pumps and Cholera data. These are referred to layers which R's `SF` package will combine internally to represent a single shapefile. To view the layers and their corresponding features, utilze the following:
+
+```{r DSN_load}
+dsn <- fs::path("SnowGIS_SHP")
+st_layers(dsn)
+```
+
+To load a layer into a R data.frame, you can do the following:
+```{r load_st, results = FALSE}
+cholera_deaths_df <- st_read(dsn, layer="Cholera_Deaths")
+```
+
+```{r print_deaths}
+cholera_deaths_df
+```
+This data frame is composed of the `Id`, `Count`, and `Geometry` which represent the location, death count, and the location respectively.
+
+## Plotting Shapefiles in R
+
+To plot a data frame, we can utilize the package `ggplot2`. In ggplot, there is a geom associated with mapping shapefile data frames. This is known as: `geom_sf`. A simple map of the Cholera Deaths without context is represented by:
+
+```{r no_context}
+library(ggplot2)
+
+ggplot(cholera_deaths_df) + geom_sf()
+```
+
+Again, this is a meaningless map given that there is no underlying image to base this data on. To associate an image with this plot, we can leverage the OpenStreeMap (OSM) map within the shapefile folder downloaded earlier. The `ggspatial` package has the command `annotation_map_tile` that allows for loading OSM tiles of a location. For this example, we can do:
+
+```{r context_map, results = FALSE}
+library(ggspatial)
+```
+
+```{r context_map_plot}
+ggplot(cholera_deaths_df) +
+  annotation_map_tile(type = "osm", zoomin = 0) + 
+  geom_sf(aes(size = Count), alpha = 0.7)
+```
+
+This is a lot better than the plot earlier, however, it does not transform the coordinates correctly. This is seen with the gray area on the right side of the plot as well as the offset location of the points. To view the system that the `cholera_deaths_df` uses, we can use the `st_crs` command.
+
+```{r view_shape}
+st_crs(cholera_deaths_df)
+```
+
+At the very end of this, you can see the data is in the format of `EPSG:27700`. OpenStreeMap, on the other hand, has coordinates in `ESPG:4326`. To convert from one system to another, we can use the `st_transform` command. This then produces:
+
+```{r espg_4326_transform}
+cholera_deaths_df_4326 <- cholera_deaths_df %>% st_transform(4326)
+
+chloera_deaths_plot <- ggplot(cholera_deaths_df_4326) +
+  annotation_map_tile(type = "osm", zoomin = 0) + 
+  geom_sf(aes(size = Count), alpha = 0.7)
+chloera_deaths_plot
+```
+
+Now that this is in the correct format, we can add the Pumps associated with the additional layer. This can be done through the code above used to load the Cholera Deaths. The code to load and add the pumps to the map is the following:
+
+```{r pumps_espg_4326_transform, results = FALSE}
+pumps_deaths_df <- st_read(dsn, layer="Pumps") %>% st_transform(4326)
+```
+
+```{r, pumps_plot}
+chloera_deaths_plot + geom_sf(data = pumps_deaths_df, size = 3, color = "red")
+```
+
+As a result of this, the areas around the pump seemingly had the higest rate of Cholera deaths.
+
+## Extended usage
+
+In the exercises portion of the Baumer chapter 17 presentation, we can see the question:
+
+```Problem 4 (Hard): Use the tidycensus package to conduct a spatial analysis of the Census data it contains for your home state. Can you illustrate how the demography of your state varies spatially?```
+
+To assess this, we must examine the `tidycensus` package. This package allows us to interact with the Census API provided by the US government. However, in order to do so, we will need to obtain a key. You can either use my key or sign up for your own [Here](http://api.census.gov/data/key_signup.html). 
+
+The objective is to (1) gather all data from the Census related to Oklahoma, (2) Use race as a means by which we can distinguish the population, (3) plot this data. Interacting with the Census API requires knowledge of the variables available. Luckily, the `tidycensus` package allows us to view these variables. We can start using this package by:
+
+```{r key, results = 'hide'}
+library(tidycensus)
+library(tidyverse)
+
+census_api_key("65e8134806aaa15b6b8244ff0f74941a07f7a741", install = TRUE, overwrite =  TRUE)
+```
+
+```{r variables}
+variables <- load_variables(2020, "pl", cache = TRUE)
+
+head(variables)
+```
+
+After exploring these variables, we need to locate the races we would like to view. For the purpose of this problem, we have chosen to only include the following: Asian, Black, Hispanic, and White. We can set this into a `racevars` which will contain the variables we want to plot.
+
+```{r racevar}
+racevars <- c(White = "P2_005N", 
+              Black = "P2_006N", 
+              Asian = "P2_008N", 
+              Hispanic = "P2_002N")
+```
+
+The `tidycensus` package allows for interaction with the decade based Census or the American Community Survey. For this, we want to use the 2010-2020 data from the Census. To load this into R, we do:
+
+```{r load_data_OK, results = FALSE}
+Oklahoma_df <- get_decennial(geography = "tract", variables = racevars, 
+                        state = "OK", geometry = TRUE,
+                        summary_var = "P1_001N", year = 2020) 
+```
+
+The `Oklahoma_df` is a data frame containing spatial data along with population per county. To plot this data frame by race, we can facet by race. We can use ggplot2 to showcase this graph as:
+
+```{r plot_ok_spatial}
+Oklahoma_df %>%
+  mutate(pct = 100 * (value / summary_value)) %>%
+  ggplot(aes(fill = pct)) +
+  facet_wrap(~variable) +
+  geom_sf(color = NA) +
+  scale_fill_viridis_c()
+```
+
+## Summary
+
+R is a versatile language with support packages that allow for analyzing geospatial data. As shown, rich spatial data can help assess the relationships between spatial location and other user defined variables. The implications of such data can be benficial to understanding the effects of political, cultural, and social factors. Ultimately, rich spatial data provides a means through which we can utilize location beyond numerical analysis. 
